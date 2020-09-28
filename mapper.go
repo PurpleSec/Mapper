@@ -36,6 +36,10 @@ type Map struct {
 	lock    sync.RWMutex
 	entries map[string]*sql.Stmt
 }
+type errval struct {
+	e error
+	s string
+}
 
 // Len returns the size of the internal mapping.
 func (m *Map) Len() int {
@@ -57,6 +61,7 @@ func (m *Map) Close() error {
 				continue
 			}
 			if err = v.Close(); err != nil {
+				err = &errval{e: err, s: `error closing mapping "` + k + `"`}
 				break
 			}
 			m.entries[k] = nil
@@ -67,6 +72,15 @@ func (m *Map) Close() error {
 		return err
 	}
 	return m.Database.Close()
+}
+func (e errval) Error() string {
+	if e.e == nil {
+		return e.s
+	}
+	return e.s + ": " + e.e.Error()
+}
+func (e errval) Unwrap() error {
+	return e.e
 }
 
 // Remove will attempt to remove the statement with the provided name. This function will return True if the
@@ -143,6 +157,8 @@ func (m *Map) AddContext(x context.Context, name, query string) error {
 	s, err := m.Database.PrepareContext(x, query)
 	if err == nil {
 		m.entries[name] = s
+	} else {
+		err = &errval{e: err, s: `error adding mapping "` + name + `"`}
 	}
 	m.lock.Unlock()
 	return err
@@ -202,6 +218,7 @@ func (m *Map) ExtendContext(x context.Context, data map[string]string) error {
 			break
 		}
 		if s, err = m.Database.PrepareContext(x, v); err != nil {
+			err = &errval{e: err, s: `error adding mapping "` + k + `"`}
 			break
 		}
 		m.entries[k] = s
