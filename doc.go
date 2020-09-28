@@ -1,4 +1,5 @@
-# Mapper
+/*
+Mapper
 
 Golang Database Statement Mapper for managing multiple prepared statements.
 
@@ -7,9 +8,7 @@ be used to manage resources and close all statements when your program closes.
 
 Using Mapper is easy.
 
-Taken from "examples/example.go"
 
-```[go]
 package main
 
 import (
@@ -80,4 +79,8 @@ func main() {
     fmt.Printf("got %q\n", s)
     q.Close()
 }
-```
+
+
+*/
+
+package mapper
