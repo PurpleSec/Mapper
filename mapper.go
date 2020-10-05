@@ -67,8 +67,7 @@ func (m *Map) Close() error {
 			m.entries[k] = nil
 		}
 	}
-	m.lock.Unlock()
-	if err != nil {
+	if m.lock.Unlock(); err != nil {
 		return err
 	}
 	return m.Database.Close()
@@ -89,10 +88,12 @@ func (m *Map) Remove(name string) bool {
 	if m.entries == nil {
 		return false
 	}
-	if _, ok := m.entries[name]; !ok {
+	s, ok := m.entries[name]
+	if !ok {
 		return false
 	}
 	m.lock.Lock()
+	s.Close()
 	delete(m.entries, name)
 	m.lock.Unlock()
 	return true
@@ -214,7 +215,7 @@ func (m *Map) ExtendContext(x context.Context, data map[string]string) error {
 			break
 		}
 		if s, ok := m.entries[k]; ok && s != nil {
-			err = errors.New(`statement with name "` + k + `" already exists`)
+			err = &errval{s: `statement with name "` + k + `" already exists`}
 			break
 		}
 		if s, err = m.Database.PrepareContext(x, v); err != nil {
@@ -235,13 +236,12 @@ func (m *Map) ExecContext(x context.Context, name string, args ...interface{}) (
 		return nil, ErrInvalidDB
 	}
 	if len(m.entries) == 0 {
-		return nil, errors.New(`statement with name "` + name + `" does not exist`)
+		return nil, &errval{s: `statement with name "` + name + `" does not exist`}
 	}
 	m.lock.RLock()
 	s, ok := m.entries[name]
-	m.lock.RUnlock()
-	if !ok || s == nil {
-		return nil, errors.New(`statement with name "` + name + `" does not exist`)
+	if m.lock.RUnlock(); !ok || s == nil {
+		return nil, &errval{s: `statement with name "` + name + `" does not exist`}
 	}
 	return s.ExecContext(x, args...)
 }
@@ -258,8 +258,7 @@ func (m *Map) QueryContext(x context.Context, name string, args ...interface{}) 
 	}
 	m.lock.RLock()
 	s, ok := m.entries[name]
-	m.lock.RUnlock()
-	if !ok || s == nil {
+	if m.lock.RUnlock(); !ok || s == nil {
 		return nil, errors.New(`statement with name "` + name + `" does not exist`)
 	}
 	return s.QueryContext(x, args...)
@@ -278,8 +277,7 @@ func (m *Map) QueryRowContext(x context.Context, name string, args ...interface{
 	}
 	m.lock.RLock()
 	s, ok := m.entries[name]
-	m.lock.RUnlock()
-	if !ok || s == nil {
+	if m.lock.RUnlock(); !ok || s == nil {
 		return nil, false
 	}
 	return s.QueryRowContext(x, args...), true
