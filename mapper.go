@@ -19,12 +19,11 @@ package mapper
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"sync"
 )
 
 // ErrInvalidDB is an error returned when the Database property of the Map is nil.
-var ErrInvalidDB = errors.New("database cannot be nil")
+var ErrInvalidDB = &errval{s: "database cannot be nil"}
 
 // Map is a struct that is used to track and manage multiple database *Stmt structs. Each statement can be mapped
 // to a name that can be used again to recall or execute the statement.
@@ -153,7 +152,7 @@ func (m *Map) AddContext(x context.Context, name, query string) error {
 	m.lock.Lock()
 	if s, ok := m.entries[name]; ok && s != nil {
 		m.lock.Unlock()
-		return errors.New(`statement with name "` + name + `" already exists`)
+		return &errval{s: `statement with name "` + name + `" already exists`}
 	}
 	s, err := m.Database.PrepareContext(x, query)
 	if err == nil {
@@ -254,12 +253,12 @@ func (m *Map) QueryContext(x context.Context, name string, args ...interface{}) 
 		return nil, ErrInvalidDB
 	}
 	if len(m.entries) == 0 {
-		return nil, errors.New(`statement with name "` + name + `" does not exist`)
+		return nil, &errval{s: `statement with name "` + name + `" does not exist`}
 	}
 	m.lock.RLock()
 	s, ok := m.entries[name]
 	if m.lock.RUnlock(); !ok || s == nil {
-		return nil, errors.New(`statement with name "` + name + `" does not exist`)
+		return nil, &errval{s: `statement with name "` + name + `" does not exist`}
 	}
 	return s.QueryContext(x, args...)
 }
