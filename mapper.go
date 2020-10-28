@@ -117,6 +117,13 @@ func (m *Map) Add(name, query string) error {
 	return m.AddContext(context.Background(), name, query)
 }
 
+// Batch is a function that can be used to perform execute statements in a specific order. This function will
+// execute all the stataments in the provided string array and will stop and return any errors that occur. The
+// passed query results will not be returned or parsed.
+func (m *Map) Batch(queries []string) error {
+	return m.BatchContext(context.Background(), queries)
+}
+
 // Get will attempt to return the statement that is associated with the provided name. This function will return the
 // statement and True if the mapping exists. Otherwise, the statement will be nil and the boolean will be False.
 func (m *Map) Get(name string) (*sql.Stmt, bool) {
@@ -159,6 +166,37 @@ func (m *Map) AddContext(x context.Context, name, query string) error {
 		m.entries[name] = s
 	} else {
 		err = &errval{e: err, s: `error adding mapping "` + name + `"`}
+	}
+	m.lock.Unlock()
+	return err
+}
+
+// BatchContext is a function that can be used to perform execute statements in a specific order. This function will
+// execute all the stataments in the provided string array and will stop and return any errors that occur. The
+// passed query results will not be returned or parsed. This function specifies a Context that can be used to
+// interrupt and cancel the execute calls.
+func (m *Map) BatchContext(x context.Context, queries []string) error {
+	if len(queries) == 0 {
+		return nil
+	}
+	if m.Database == nil {
+		return ErrInvalidDB
+	}
+	var err error
+	m.lock.Lock()
+	for i := range queries {
+		select {
+		case <-x.Done():
+			err = x.Err()
+		default:
+		}
+		if err != nil {
+			break
+		}
+		if _, err = m.Database.ExecContext(x, queries[i]); err != nil {
+			err = &errval{e: err, s: `error executing Init statement mapping "` + queries[i] + `"`}
+			break
+		}
 	}
 	m.lock.Unlock()
 	return err
