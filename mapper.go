@@ -48,6 +48,11 @@ func (m *Map) Len() int {
 	return len(m.entries)
 }
 
+// New is a shorthand function for "&Map{database: db}". Returns a new Map instance backed by the supplied database.
+func New(db *sql.DB) *Map {
+	return &Map{Database: db}
+}
+
 // Close will attempt to close all the contained database statements. This will bail on any errors that occur.
 // Multiple calls to close can be used to make sure that all statements are closed successfully. Note: this will
 // also attempt to close the connected database if all statement closures are successful.
