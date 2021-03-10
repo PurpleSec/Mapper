@@ -31,8 +31,8 @@ var ErrInvalidDB = &errval{s: "database cannot be nil"}
 type Map struct {
 	Database *sql.DB
 
-	lock    sync.RWMutex
 	entries map[string]*sql.Stmt
+	lock    sync.RWMutex
 }
 type errval struct {
 	e error
