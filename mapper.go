@@ -1,4 +1,4 @@
-// Copyright 2021 PurpleSec Team
+// Copyright 2021 - 2022 PurpleSec Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,15 +24,16 @@ import (
 // ErrInvalidDB is an error returned when the Database property of the Map is nil.
 var ErrInvalidDB = &errval{s: "database cannot be nil"}
 
-// Map is a struct that is used to track and manage multiple database *Stmt structs. Each statement can be mapped
-// to a name that can be used again to recall or execute the statement.
+// Map is a struct that is used to track and manage multiple database *Stmt structs.
+// Each statement can be mapped to a name that can be used again to recall or execute
+// the statement.
 //
 // This struct is safe for multiple co-current goroutine usage.
 type Map struct {
-	Database *sql.DB
+	lock sync.RWMutex
 
-	entries map[string]*sql.Stmt
-	lock    sync.RWMutex
+	Database *sql.DB
+	entries  map[string]*sql.Stmt
 }
 type errval struct {
 	e error
@@ -47,24 +48,27 @@ func (m *Map) Len() int {
 	return len(m.entries)
 }
 
-// New is a shorthand function for "&Map{database: db}". Returns a new Map instance backed by the supplied database.
+// New is a shorthand function for "&Map{database: db}". Returns a new Map instance
+// backed by the supplied database.
 func New(db *sql.DB) *Map {
 	return &Map{Database: db}
 }
 
-// Close will attempt to close all the contained database statements. This will bail on any errors that occur.
-// Multiple calls to close can be used to make sure that all statements are closed successfully. Note: this will
-// also attempt to close the connected database if all statement closures are successful.
+// Close will attempt to close all the contained database statements.
+// This will bail on any errors that occur.
+//
+// Multiple calls to close can be used to make sure that all statements are
+// closed successfully. Note: this will also attempt to close the connected
+// database if all statement closures are successful.
 func (m *Map) Close() error {
 	var err error
-	m.lock.Lock()
-	if m.entries != nil {
+	if m.lock.Lock(); m.entries != nil {
 		for k, v := range m.entries {
 			if v == nil {
 				continue
 			}
 			if err = v.Close(); err != nil {
-				err = &errval{e: err, s: `error closing mapping "` + k + `"`}
+				err = &errval{e: err, s: `closing mapping "` + k + `"`}
 				break
 			}
 			m.entries[k] = nil
@@ -85,8 +89,12 @@ func (e errval) Unwrap() error {
 	return e.e
 }
 
-// Remove will attempt to remove the statement with the provided name. This function will return True if the
-// mapping was found and removed. Otherwise the function will return false.
+// Remove will attempt to remove the statement with the provided name.
+//
+// This function will return True if the mapping was found and removed.
+// Otherwise the function will return false.
+//
+// This will also close the removed statement.
 func (m *Map) Remove(name string) bool {
 	if m.entries == nil {
 		return false
@@ -113,23 +121,34 @@ func (m *Map) Contains(name string) bool {
 	return ok && s != nil
 }
 
-// Add will prepare and add the specified query to the Map with the provided name. This will only add the mapping
-// if the 'Prepare' function is successful. Otherwise the prepare error will be returned. This function does not
-// allow for adding a mapping when one already exists. If a mapping with an overlapping name is attempted, an
-// error will be returned before attempting to prepare the query.
+// Add will prepare and add the specified query to the Map with the provided name.
+//
+// This will only add the mapping if the 'Prepare' function is successful. Otherwise
+// the prepare error will be returned.
+//
+// This function does not allow for adding a mapping when one already exists. If
+// a mapping with an overlapping name is attempted, an error will be returned before
+// attempting to prepare the query.
 func (m *Map) Add(name, query string) error {
 	return m.AddContext(context.Background(), name, query)
 }
 
-// Batch is a function that can be used to perform execute statements in a specific order. This function will
-// execute all the stataments in the provided string array and will stop and return any errors that occur. The
-// passed query results will not be returned or parsed.
+// Batch is a function that can be used to perform execute statements in a specific
+// order.
+//
+// This function will execute all the stataments in the provided string array and
+// will stop and return any errors that occur.
+//
+// The passed query results will not be returned or parsed.
 func (m *Map) Batch(queries []string) error {
 	return m.BatchContext(context.Background(), queries)
 }
 
-// Get will attempt to return the statement that is associated with the provided name. This function will return the
-// statement and True if the mapping exists. Otherwise, the statement will be nil and the boolean will be False.
+// Get will attempt to return the statement that is associated with the provided
+// name.
+//
+// This function will return the statement and True if the mapping exists. Otherwise,
+// the statement will be nil and the boolean will be False.
 func (m *Map) Get(name string) (*sql.Stmt, bool) {
 	if len(m.entries) == 0 {
 		return nil, false
@@ -140,19 +159,31 @@ func (m *Map) Get(name string) (*sql.Stmt, bool) {
 	return s, ok
 }
 
-// Extend will prepare and add all the specified queries in the provided map to the Map. This will only add each
-// mapping if the 'Prepare' function is successful. Otherwise the prepare error will be returned. This function does
-// not allow for adding a mapping when one already exists. If a mapping with an overlapping name is attempted, an
-// error will be returned before attempting to prepare the query.
+// Extend will prepare and add all the specified queries in the provided map to
+// the Map.
+//
+// This will only add each mapping if the 'Prepare' function is successful. Otherwise
+// the prepare error will be returned.
+//
+// This function does not allow for adding a mapping when one already exists. If
+// a mapping with an overlapping name is attempted, an error will be returned before
+// attempting to prepare the query.
 func (m *Map) Extend(data map[string]string) error {
 	return m.ExtendContext(context.Background(), data)
 }
 
-// AddContext will prepare and add the specified query to the Map with the provided name. This will only add the
-// mapping if the 'Prepare' function is successful. Otherwise the prepare error will be returned. This function does
-// not allow for adding a mapping when one already exists. If a mapping with an overlapping name is attempted, an
-// error will be returned before attempting to prepare the query. This function specifies a Context that can be used
-// to interrupt and cancel the prepare calls.
+// AddContext will prepare and add the specified query to the Map with the provided
+// name.
+//
+// This will only add the mapping if the 'Prepare' function is successful. Otherwise
+// the prepare error will be returned.
+//
+// This function does not allow for adding a mapping when one already exists. If
+// a mapping with an overlapping name is attempted, an error will be returned before
+// attempting to prepare the query.
+//
+// This function specifies a Context that can be used to interrupt and cancel the
+// prepare calls.
 func (m *Map) AddContext(x context.Context, name, query string) error {
 	if m.Database == nil {
 		return ErrInvalidDB
@@ -175,10 +206,14 @@ func (m *Map) AddContext(x context.Context, name, query string) error {
 	return err
 }
 
-// BatchContext is a function that can be used to perform execute statements in a specific order. This function will
-// execute all the stataments in the provided string array and will stop and return any errors that occur. The
-// passed query results will not be returned or parsed. This function specifies a Context that can be used to
-// interrupt and cancel the execute calls.
+// BatchContext is a function that can be used to perform execute statements in a
+// specific order. This function will execute all the stataments in the provided
+// string array and will stop and return any errors that occur.
+//
+// The passed query results will not be returned or parsed.
+//
+// This function specifies a Context that can be used to interrupt and cancel the
+// execute calls.
 func (m *Map) BatchContext(x context.Context, queries []string) error {
 	if len(queries) == 0 {
 		return nil
@@ -198,7 +233,7 @@ func (m *Map) BatchContext(x context.Context, queries []string) error {
 			break
 		}
 		if _, err = m.Database.ExecContext(x, queries[i]); err != nil {
-			err = &errval{e: err, s: `error executing Init statement mapping "` + queries[i] + `"`}
+			err = &errval{e: err, s: `error executing statement mapping "` + queries[i] + `"`}
 			break
 		}
 	}
@@ -206,31 +241,45 @@ func (m *Map) BatchContext(x context.Context, queries []string) error {
 	return err
 }
 
-// Exec will attempt to get the statement with the provided name and then attempt to call the 'Exec' function on
-// the statement. This provides the results of the Exec function.
+// Exec will attempt to get the statement with the provided name and then attempt
+// to call the 'Exec' function on the statement.
+//
+// This provides the results of the Exec function.
 func (m *Map) Exec(name string, args ...interface{}) (sql.Result, error) {
 	return m.ExecContext(context.Background(), name, args...)
 }
 
-// Query will attempt to get the statement with the provided name and then attempt to call the 'Query' function on
-// the statement. This provides the results of the Query function.
+// Query will attempt to get the statement with the provided name and then attempt
+// to call the 'Query' function on the statement.
+//
+// This provides the results of the Query function.
 func (m *Map) Query(name string, args ...interface{}) (*sql.Rows, error) {
 	return m.QueryContext(context.Background(), name, args...)
 }
 
-// QueryRow will attempt to get the statement with the provided name and then attempt to call the 'QueryRow' function
-// on the statement. This function differs from the original 'QueryRow' statement as this provides a boolean to
-// indicate if the provided named statement was found. If the returned boolean is True, the result is not-nil and
-// safe to use.
+// QueryRow will attempt to get the statement with the provided name and then attempt
+// to call the 'QueryRow' function on the statement.
+//
+// This function differs from the original 'QueryRow' statement as this provides
+// a boolean to indicate if the provided named statement was found.
+//
+// If the returned boolean is True, the result is not-nil and safe to use.
 func (m *Map) QueryRow(name string, args ...interface{}) (*sql.Row, bool) {
 	return m.QueryRowContext(context.Background(), name, args...)
 }
 
-// ExtendContext will prepare and add all the specified queries in the provided map to the Map. This will only add
-// each mapping if the 'Prepare' function is successful. Otherwise the prepare error will be returned. This function
-// does not allow for adding a mapping when one already exists. If a mapping with an overlapping name is attempted, an
-// error will be returned before attempting to prepare the query. This function specifies a Context that can be used
-// to interrupt and cancel the prepare calls.
+// ExtendContext will prepare and add all the specified queries in the provided
+// map to the Map.
+//
+// This will only add each mapping if the 'Prepare' function is successful. Otherwise
+// the prepare error will be returned.
+//
+// This function does not allow for adding a mapping when one already exists. If
+// a mapping with an overlapping name is attempted, an error will be returned before
+// attempting to prepare the query.
+//
+// This function specifies a Context that can be used to interrupt and cancel the
+// prepare calls.
 func (m *Map) ExtendContext(x context.Context, data map[string]string) error {
 	if data == nil {
 		return nil
@@ -255,7 +304,7 @@ func (m *Map) ExtendContext(x context.Context, data map[string]string) error {
 		if err != nil {
 			break
 		}
-		if s, ok := m.entries[k]; ok && s != nil {
+		if v, ok := m.entries[k]; ok && v != nil {
 			err = &errval{s: `statement with name "` + k + `" already exists`}
 			break
 		}
@@ -269,9 +318,13 @@ func (m *Map) ExtendContext(x context.Context, data map[string]string) error {
 	return err
 }
 
-// ExecContext will attempt to get the statement with the provided name and then attempt to call the 'Exec' function
-// on the statement. This provides the results of the Exec function. This provides the results of the Exec function.
-// This function specifies a Context that can be used to interrupt and cancel the Exec function.
+// ExecContext will attempt to get the statement with the provided name and then
+// attempt to call the 'Exec' function on the statement.
+//
+// This provides the results of the Exec function.
+//
+// This function specifies a Context that can be used to interrupt and cancel the
+// Exec function.
 func (m *Map) ExecContext(x context.Context, name string, args ...interface{}) (sql.Result, error) {
 	if m.Database == nil {
 		return nil, ErrInvalidDB
@@ -287,9 +340,13 @@ func (m *Map) ExecContext(x context.Context, name string, args ...interface{}) (
 	return s.ExecContext(x, args...)
 }
 
-// QueryContext will attempt to get the statement with the provided name and then attempt to call the 'Query'
-// function on the statement. This provides the results of the Query function. This function specifies a Context
-// that can be used to interrupt and cancel the Query function.
+// QueryContext will attempt to get the statement with the provided name and then
+// attempt to call the 'Query' function on the statement.
+//
+// This provides the results of the Query function.
+//
+// This function specifies a Context that can be used to interrupt and cancel the
+// Query function.
 func (m *Map) QueryContext(x context.Context, name string, args ...interface{}) (*sql.Rows, error) {
 	if m.Database == nil {
 		return nil, ErrInvalidDB
@@ -305,10 +362,16 @@ func (m *Map) QueryContext(x context.Context, name string, args ...interface{}) 
 	return s.QueryContext(x, args...)
 }
 
-// QueryRowContext will attempt to get the statement with the provided name and then attempt to call the 'QueryRow'
-// function on the statement. This function differs from the original 'QueryRow' statement as this provides a boolean
-// to indicate if the provided named statement was found. If the returned boolean is True, the result is not-nil and
-// safe to use. This function specifies a Context that can be used to interrupt and cancel the Query function.
+// QueryRowContext will attempt to get the statement with the provided name and
+// then attempt to call the 'QueryRow' function on the statement.
+//
+// This function differs from the original 'QueryRow' statement as this provides
+// a boolean to indicate if the provided named statement was found.
+//
+// If the returned boolean is True, the result is not-nil and safe to use.
+//
+// This function specifies a Context that can be used to interrupt and cancel the
+// Query function.
 func (m *Map) QueryRowContext(x context.Context, name string, args ...interface{}) (*sql.Row, bool) {
 	if m.Database == nil {
 		return nil, false
