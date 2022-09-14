@@ -136,7 +136,7 @@ func (m *Map) Add(name, query string) error {
 // Batch is a function that can be used to perform execute statements in a specific
 // order.
 //
-// This function will execute all the stataments in the provided string array and
+// This function will execute all the statements in the provided string array and
 // will stop and return any errors that occur.
 //
 // The passed query results will not be returned or parsed.
@@ -207,7 +207,7 @@ func (m *Map) AddContext(x context.Context, name, query string) error {
 }
 
 // BatchContext is a function that can be used to perform execute statements in a
-// specific order. This function will execute all the stataments in the provided
+// specific order. This function will execute all the statements in the provided
 // string array and will stop and return any errors that occur.
 //
 // The passed query results will not be returned or parsed.
