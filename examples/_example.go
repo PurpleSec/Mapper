@@ -80,6 +80,6 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Printf("got %q\n", s)
+	fmt.Printf("got %s\n", s)
 	q.Close()
 }
